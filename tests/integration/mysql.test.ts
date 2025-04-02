@@ -132,4 +132,44 @@ describe('MySQL Integration', () => {
       connection.release();
     }
   });
+
+  it('should successfully update existing records', async () => {
+    const connection = await pool.getConnection();
+    try {
+      // Start transaction
+      await connection.beginTransaction();
+      
+      // Update the name of 'Test 1' to 'Updated Test 1'
+      const [updateResult] = await connection.query(
+        'UPDATE test_table SET name = ? WHERE name = ?',
+        ['Updated Test 1', 'Test 1']
+      ) as [mysql2.ResultSetHeader, any];
+      
+      // Verify the update affected one row
+      expect(updateResult.affectedRows).toBe(1);
+      
+      // Verify the updated record
+      const [rows] = await connection.query(
+        'SELECT * FROM test_table WHERE name = ?',
+        ['Updated Test 1']
+      ) as [any[], any];
+      
+      expect(rows.length).toBe(1);
+      expect(rows[0].name).toBe('Updated Test 1');
+      
+      // Rollback the changes
+      await connection.rollback();
+      
+      // Verify the record is back to original state
+      const [originalRows] = await connection.query(
+        'SELECT * FROM test_table WHERE name = ?',
+        ['Test 1']
+      ) as [any[], any];
+      
+      expect(originalRows.length).toBe(1);
+      expect(originalRows[0].name).toBe('Test 1');
+    } finally {
+      connection.release();
+    }
+  });
 }); 

@@ -58,13 +58,10 @@ async function executeQuery<T>(sql: string, params: any[] = []): Promise<T> {
   }
 }
 
-async function executeReadOnlyQuery<T>(sql: string): Promise<T> {
+async function executeReadWriteQuery<T>(sql: string): Promise<T> {
   const connection = await pool.getConnection();
 
   try {
-    // Set read-only mode
-    await connection.query("SET SESSION TRANSACTION READ ONLY");
-
     // Begin transaction
     await connection.beginTransaction();
 
@@ -73,11 +70,8 @@ async function executeReadOnlyQuery<T>(sql: string): Promise<T> {
       const result = await connection.query(sql);
       const rows = Array.isArray(result) ? result[0] : result;
 
-      // Rollback transaction (since it's read-only)
-      await connection.rollback();
-
-      // Reset to read-write mode
-      await connection.query("SET SESSION TRANSACTION READ WRITE");
+      // Commit transaction
+      await connection.commit();
 
       return {
         content: [
@@ -94,10 +88,9 @@ async function executeReadOnlyQuery<T>(sql: string): Promise<T> {
       throw error;
     }
   } catch (error) {
-    // Ensure we rollback and reset transaction mode on any error
+    // Ensure we rollback on any error
     try {
       await connection.rollback();
-      await connection.query("SET SESSION TRANSACTION READ WRITE");
     } catch {
       // Ignore errors during cleanup
     }
@@ -108,7 +101,7 @@ async function executeReadOnlyQuery<T>(sql: string): Promise<T> {
 }
 
 // Add exports for the query functions
-export { executeQuery, executeReadOnlyQuery };
+export { executeQuery, executeReadWriteQuery };
 
 // Request handlers
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
@@ -158,7 +151,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "mysql_query",
-      description: "Run a read-only MySQL query",
+      description: "Run a MySQL query with read and write capabilities",
       inputSchema: {
         type: "object",
         properties: {
@@ -175,7 +168,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 
   const sql = request.params.arguments?.sql as string;
-  return executeReadOnlyQuery(sql);
+  return executeReadWriteQuery(sql);
 });
 
 // Server startup and shutdown
